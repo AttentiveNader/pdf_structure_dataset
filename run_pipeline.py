@@ -171,7 +171,7 @@ def main() -> int:
             output_dir,
             llm_fn,
             batch_chars=batch_chars,
-            batch_overlap=args.batch_overlap,
+            batch_overlap=batch_overlap,
             root_title=args.root_title,
         )
         print(f"  -> {out}")

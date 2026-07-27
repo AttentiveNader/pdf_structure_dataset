@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pipeline.context_budget import batch_overlap_for_batch_chars
+
+_DEFAULT_OVERLAP_CHARS = 800
+
 
 @dataclass(frozen=True)
 class MarkdownBatch:
@@ -18,7 +22,7 @@ def split_markdown(
     markdown: str,
     max_chars: int,
     *,
-    overlap_chars: int = 800,
+    overlap_chars: int | None = _DEFAULT_OVERLAP_CHARS,
 ) -> list[MarkdownBatch]:
     """
     Split markdown into batches at most max_chars long.
@@ -28,6 +32,8 @@ def split_markdown(
     """
     if max_chars <= 0:
         raise ValueError("max_chars must be positive")
+    if overlap_chars is None:
+        overlap_chars = batch_overlap_for_batch_chars(max_chars)
     if overlap_chars < 0:
         raise ValueError("overlap_chars must be non-negative")
     if overlap_chars >= max_chars:

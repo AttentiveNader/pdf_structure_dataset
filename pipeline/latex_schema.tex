@@ -1,0 +1,32 @@
+% Credit agreement LaTeX schema — included via \input{latex_schema.tex}
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[letterpaper, margin=1in]{geometry}
+\usepackage{setspace}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+
+\setlist[enumerate]{leftmargin=*, itemsep=0.25em, topsep=0.35em}
+\setlist[itemize]{leftmargin=*, itemsep=0.25em, topsep=0.35em}
+
+\titleformat{\section}{\normalfont\bfseries\large}{}{0pt}{}
+\titleformat{\subsection}{\normalfont\bfseries\normalsize}{}{0pt}{}
+
+% --- Structural macros (used for hierarchy / JSON tree parsing) ---
+\newcommand{\creditdocumenttitle}[1]{\begin{center}{\LARGE\bfseries #1}\end{center}\vspace{12pt}}
+\newcommand{\creditarticle}[1]{\clearpage\section*{#1}\vspace{6pt}}
+\newcommand{\creditsection}[1]{\subsection*{#1}\vspace{4pt}}
+\newcommand{\creditsubsection}[1]{\subsubsection*{#1}\vspace{3pt}}
+\newcommand{\creditschedule}[1]{\clearpage\section*{Schedule: #1}\vspace{6pt}}
+\newcommand{\creditexhibit}[1]{\clearpage\section*{Exhibit: #1}\vspace{6pt}}
+
+% --- Spacing / layout (not parsed into structure tree) ---
+\newcommand{\creditvspace}[1]{\vspace{#1}}
+
+\newenvironment{creditindent}[1]{%
+  \setlength{\parindent}{#1}%
+  \setlength{\parskip}{0.4em}%
+}{%
+  \setlength{\parindent}{0pt}%
+}
