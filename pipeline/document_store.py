@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from pipeline.retrieve import get_number_of_pages
+from pipeline.toc import resolve_page_mapping_for_document
 
 
 class CreditDocumentStore:
@@ -21,12 +22,14 @@ class CreditDocumentStore:
         document_title: str = "",
         table_of_contents: Optional[dict[str, Any]] = None,
         pages: Optional[list[dict[str, Any]]] = None,
+        page_mapping: Optional[dict[str, Any]] = None,
     ):
         self.path = str(Path(pdf_path).resolve())
         self.doc_name = Path(pdf_path).name
         self.document_title = document_title
         self.table_of_contents = table_of_contents
         self.pages = pages
+        self.page_mapping = page_mapping
         self.page_count = get_number_of_pages(self.path)
 
     @classmethod
@@ -36,11 +39,20 @@ class CreditDocumentStore:
         source = data.get("source_pdf")
         if source and Path(source).resolve() != pdf_resolved:
             pass  # allow override via explicit pdf_path argument
-        return cls(
+        store = cls(
             pdf_path=pdf_path,
             document_title=data.get("document_title", ""),
             table_of_contents=data.get("table_of_contents"),
+            page_mapping=data.get("page_mapping"),
         )
+        if store.page_mapping is None and store.table_of_contents:
+            pm = resolve_page_mapping_for_document(
+                store.path,
+                table_of_contents=store.table_of_contents,
+                page_mapping_hint=data.get("page_mapping_hint"),
+            )
+            store.page_mapping = pm.to_dict()
+        return store
 
     def as_doc_info(self) -> dict[str, Any]:
         return {
@@ -50,6 +62,7 @@ class CreditDocumentStore:
             "page_count": self.page_count,
             "table_of_contents": self.table_of_contents,
             "pages": self.pages,
+            "page_mapping": self.page_mapping,
         }
 
     def preload_pages(self) -> None:

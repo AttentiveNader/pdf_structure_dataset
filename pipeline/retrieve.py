@@ -102,6 +102,15 @@ def get_document_metadata(doc_info: dict[str, Any]) -> str:
         "page_count": doc_info.get("page_count"),
         "source_pdf": doc_info.get("path", ""),
     }
+    mapping = doc_info.get("page_mapping")
+    if mapping:
+        result["page_mapping"] = mapping
+        result["toc_page_numbers_are"] = "printed"
+        result["page_content_pages_are"] = "printed"
+        result["conversion"] = (
+            "Pass printed TOC page numbers to get_page_content; "
+            "they are converted to PDF page indices automatically."
+        )
     return json.dumps(result, ensure_ascii=False)
 
 
@@ -119,18 +128,26 @@ def get_page_content_json(
     pages: str,
 ) -> str:
     """Retrieve page text; ``pages`` format like ``5-7``, ``3,8``, ``12``."""
+    path = doc_info.get("path")
+    if not path:
+        return json.dumps({"error": "document path not set"})
+
+    page_spec = pages
+    mapping = doc_info.get("page_mapping")
+    if mapping and isinstance(mapping, dict):
+        from pipeline.page_mapping import PageMapping, convert_page_spec_printed_to_pdf
+
+        pm = PageMapping.from_dict(mapping)
+        page_spec = convert_page_spec_printed_to_pdf(pages, pm)
+
     try:
-        page_nums = parse_pages(pages)
+        page_nums = parse_pages(page_spec)
     except (ValueError, AttributeError) as e:
         return json.dumps(
             {
                 "error": f"Invalid pages format: {pages!r}. Use '5-7', '3,8', or '12'. {e}"
             }
         )
-
-    path = doc_info.get("path")
-    if not path:
-        return json.dumps({"error": "document path not set"})
 
     try:
         content = get_pdf_page_content(
@@ -140,5 +157,12 @@ def get_page_content_json(
         )
     except Exception as e:
         return json.dumps({"error": f"Failed to read page content: {e}"})
+
+    if mapping and isinstance(mapping, dict):
+        offset = mapping.get("offset_pdf_minus_printed", 0)
+        for item in content:
+            item["pdf_page"] = item["page"]
+            item["printed_page"] = item["page"] - offset
+            item["page"] = item["printed_page"]
 
     return json.dumps(content, ensure_ascii=False)

@@ -72,12 +72,25 @@ def process_pdf(
 
     toc_data = extract_toc(markdown, llm_fn, max_pages=max_pages)
 
+    from pipeline.toc import resolve_page_mapping_for_document
+
+    page_mapping = resolve_page_mapping_for_document(
+        str(pdf_path.resolve()),
+        table_of_contents=toc_data["table_of_contents"],
+        page_mapping_hint=toc_data.get("page_mapping_hint"),
+    )
+    print(
+        f"  Page mapping: printed p.1 -> PDF p.{page_mapping.printed_page_one_pdf_page} "
+        f"({page_mapping.method}, {page_mapping.confidence})"
+    )
+
     out_path = output_dir / f"{pdf_path.stem}.json"
     payload = {
         "source_pdf": str(pdf_path.resolve()),
         "pages_extracted": {"from": 1, "to": max_pages},
         "markdown_chars": len(markdown),
         "document_title": toc_data["document_title"],
+        "page_mapping": page_mapping.to_dict(),
         "table_of_contents": toc_data["table_of_contents"],
     }
     out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
