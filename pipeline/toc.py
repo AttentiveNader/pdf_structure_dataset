@@ -60,46 +60,16 @@ def _validate_toc_payload(data: Any) -> dict[str, Any]:
     return data
 
 
-def mapping_from_hint(hint: Any) -> Optional["PageMapping"]:
-    from pipeline.page_mapping import PageMapping
-
-    if not isinstance(hint, dict):
-        return None
-    pdf_one = hint.get("printed_page_one_pdf_page")
-    if not isinstance(pdf_one, int) or pdf_one < 1:
-        return None
-    offset = pdf_one - 1
-    return PageMapping(
-        toc_page_kind="printed",
-        printed_page_one_pdf_page=pdf_one,
-        offset_pdf_minus_printed=offset,
-        method="llm",
-        confidence="medium",
-        notes=str(hint.get("notes") or "From TOC extraction page_mapping_hint."),
-    )
-
-
 def resolve_page_mapping_for_document(
     pdf_path: str,
     *,
     table_of_contents: dict[str, Any],
     page_mapping_hint: Any = None,
 ) -> "PageMapping":
-    from pipeline.page_mapping import (
-        calibrate_page_mapping_anchor_search,
-        calibrate_page_mapping_from_footers,
-        mapping_from_hint,
-    )
+    from pipeline.page_mapping import resolve_page_mapping
 
-    footer = calibrate_page_mapping_from_footers(pdf_path)
-    if footer is not None:
-        return footer
-
-    hinted = mapping_from_hint(page_mapping_hint)
-    if hinted is not None:
-        return hinted
-
-    return calibrate_page_mapping_anchor_search(pdf_path, table_of_contents)
+    del table_of_contents
+    return resolve_page_mapping(pdf_path, page_mapping_hint=page_mapping_hint)
 
 
 def extract_toc(

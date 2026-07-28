@@ -22,8 +22,8 @@ Optional top-level field:
   - "printed_page_one_pdf_page": integer — PDF page (1-based file index) where printed page "1" starts
   - "notes": string — brief explanation (e.g. "cover and TOC use roman numerals; body starts PDF p.6")
 
-Note: after extraction, the pipeline calibrates offset automatically by reading each PDF page footer
-(the last word: Roman numerals, then Arabic starting at 1). TOC page numbers are Arabic printed pages.
+Note: after extraction, offset is calibrated from each PDF page's **last word**
+(Roman numerals, then Arabic starting at 1). TOC page numbers are Arabic printed pages.
 
 Return ONLY valid JSON — no markdown fences, no commentary.
 """
