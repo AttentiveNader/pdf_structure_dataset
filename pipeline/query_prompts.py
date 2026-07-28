@@ -12,9 +12,8 @@ You have three tools:
 3. get_page_content(pages) — PDF text for page ranges. ``pages`` uses **printed** page numbers (same as the TOC), not raw PDF file indices. Format: "5-7", "3,8", or "12". Use tight ranges; never request all pages at once.
 
 Page numbering:
-- TOC entries use **printed** Arabic page numbers (usually the **last word** on each PDF page).
-- Front matter may use Roman numerals (i, ii, …); Arabic **1** is where TOC numbering starts.
-- get_document() includes ``page_mapping`` from last-word scan (printed page 1 → PDF page N).
+- TOC entries use **printed** page numbers (not PDF file indices).
+- A separate LLM step finds the PDF page where printed page 1 begins; ``page_mapping`` stores the offset.
 - Pass **printed** TOC pages to get_page_content; conversion to PDF indices is automatic.
 
 Strategy:

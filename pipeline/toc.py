@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any, Optional
 
 from pipeline.toc_prompts import build_toc_prompt
 
@@ -62,14 +63,17 @@ def _validate_toc_payload(data: Any) -> dict[str, Any]:
 
 def resolve_page_mapping_for_document(
     pdf_path: str,
+    call_llm: Callable[[str], str],
     *,
-    table_of_contents: dict[str, Any],
-    page_mapping_hint: Any = None,
+    table_of_contents: dict[str, Any] | None = None,
+    preview_pages: int = 15,
 ) -> "PageMapping":
     from pipeline.page_mapping import resolve_page_mapping
 
     del table_of_contents
-    return resolve_page_mapping(pdf_path, page_mapping_hint=page_mapping_hint)
+    return resolve_page_mapping(
+        pdf_path, call_llm, preview_pages=preview_pages
+    )
 
 
 def extract_toc(

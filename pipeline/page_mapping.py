@@ -1,22 +1,22 @@
 """
 Map TOC printed page numbers to PDF file page indices.
 
-Uses the **last word** of each page's extracted text as the printed page label
-(Roman numerals in front matter, then Arabic). TOC Arabic pages align via offset
-at the first PDF page whose last word is ``1``.
+Uses a dedicated LLM call on the first N PDF pages (each tagged with its file index)
+to find where printed page 1 begins.
 """
 
 from __future__ import annotations
 
+import json
 import re
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from typing import Any, Literal, Optional
+from typing import Any, Optional
 
+from pipeline.page_mapping_prompts import build_content_start_prompt
 from pipeline.retrieve import get_number_of_pages, get_pdf_page_content
 
-PageKind = Literal["roman", "arabic"]
-
-_ROMAN_RE = re.compile(r"^[IVXLCDM]+$", re.IGNORECASE)
+DEFAULT_PREVIEW_PAGES = 15
 
 
 @dataclass
@@ -26,7 +26,7 @@ class PageMapping:
     toc_page_kind: str  # "printed"
     printed_page_one_pdf_page: int
     offset_pdf_minus_printed: int
-    method: str  # "last_word" | "llm" | "identity"
+    method: str  # "llm_content_start" | "identity"
     confidence: str  # "high" | "medium" | "low"
     notes: str = ""
 
@@ -58,168 +58,108 @@ def identity_mapping() -> PageMapping:
         offset_pdf_minus_printed=0,
         method="identity",
         confidence="low",
-        notes="No page labels found; assuming TOC pages match PDF indices.",
+        notes="LLM content-start detection failed; assuming TOC pages match PDF indices.",
     )
 
 
-def mapping_from_hint(hint: Any) -> Optional[PageMapping]:
-    """Build mapping from optional LLM ``page_mapping_hint`` in TOC JSON."""
-    if not isinstance(hint, dict):
-        return None
-    pdf_one = hint.get("printed_page_one_pdf_page")
-    if not isinstance(pdf_one, int) or pdf_one < 1:
-        return None
+def format_pages_with_pdf_index(pages: list[dict[str, Any]]) -> str:
+    """Combine page text with PDF index marker at the end of each page block."""
+    blocks: list[str] = []
+    for item in pages:
+        idx = item["page"]
+        text = (item.get("content") or "").strip()
+        blocks.append(
+            f"===== PDF page index {idx} =====\n{text}\n\n[PDF_PAGE_INDEX: {idx}]"
+        )
+    return "\n\n".join(blocks)
+
+
+def _strip_json(text: str) -> str:
+    text = text.strip()
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
+    if fence:
+        return fence.group(1).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        return text[start : end + 1]
+    return text
+
+
+def _parse_content_start_response(data: Any, *, page_count: int) -> PageMapping:
+    if not isinstance(data, dict):
+        raise ValueError("expected JSON object")
+    pdf_one = data.get("printed_page_one_pdf_page")
+    if not isinstance(pdf_one, int) or pdf_one < 1 or pdf_one > page_count:
+        raise ValueError(
+            f"printed_page_one_pdf_page must be int in 1..{page_count}"
+        )
+    notes = data.get("notes", "")
+    if not isinstance(notes, str):
+        notes = str(notes)
     offset = pdf_one - 1
     return PageMapping(
         toc_page_kind="printed",
         printed_page_one_pdf_page=pdf_one,
         offset_pdf_minus_printed=offset,
-        method="llm",
+        method="llm_content_start",
         confidence="medium",
-        notes=str(hint.get("notes") or "From TOC extraction page_mapping_hint."),
+        notes=notes or "LLM content-start detection.",
     )
 
 
-def roman_to_int(value: str) -> Optional[int]:
-    value = value.upper()
-    if not _ROMAN_RE.match(value):
-        return None
-    numerals = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
-    total = 0
-    prev = 0
-    for ch in reversed(value):
-        if ch not in numerals:
-            return None
-        cur = numerals[ch]
-        if cur < prev:
-            total -= cur
-        else:
-            total += cur
-            prev = cur
-    return total if total > 0 else None
-
-
-def parse_page_label_token(token: str) -> Optional[tuple[PageKind, int]]:
-    """Parse last word as Roman or Arabic page label."""
-    if not token:
-        return None
-    token = token.strip().strip(".,;:-–—")
-    if not token:
-        return None
-    if token.isdigit():
-        n = int(token)
-        return ("arabic", n) if n >= 0 else None
-    roman = roman_to_int(token)
-    if roman is not None:
-        return ("roman", roman)
-    return None
-
-
-def last_word_page_label(page_text: str) -> Optional[tuple[PageKind, int]]:
-    """Last word of full page text if it is a page number (Roman or Arabic)."""
-    if not page_text or not page_text.strip():
-        return None
-    words = page_text.split()
-    if not words:
-        return None
-    token = words[-1].strip(".,;:-–— ")
-    return parse_page_label_token(token)
-
-
-def scan_pdf_page_labels(
+def calibrate_page_mapping_with_llm(
     pdf_path: str,
+    call_llm: Callable[[str], str],
     *,
-    max_pdf_pages: int = 250,
-) -> list[tuple[int, Optional[tuple[PageKind, int]]]]:
-    """For each PDF page, label from last word of extracted text."""
+    preview_pages: int = DEFAULT_PREVIEW_PAGES,
+    max_retries: int = 2,
+) -> PageMapping:
+    """Second LLM call: locate PDF page where printed page 1 begins."""
     total = get_number_of_pages(pdf_path)
-    load_until = min(total, max_pdf_pages)
-    pages = get_pdf_page_content(pdf_path, list(range(1, load_until + 1)))
-    return [
-        (item["page"], last_word_page_label(item.get("content") or ""))
-        for item in pages
-    ]
+    n = min(total, preview_pages)
+    if n < 1:
+        return identity_mapping()
 
+    pages = get_pdf_page_content(pdf_path, list(range(1, n + 1)))
+    pages_block = format_pages_with_pdf_index(pages)
+    prompt = build_content_start_prompt(pages_block, preview_pages=n)
+    last_error: Optional[Exception] = None
 
-def calibrate_page_mapping(
-    pdf_path: str,
-    *,
-    max_pdf_pages: int = 250,
-) -> Optional[PageMapping]:
-    """
-    Find first PDF page whose last word is Arabic ``1`` (after Roman front matter).
+    for attempt in range(max_retries + 1):
+        response = call_llm(prompt)
+        try:
+            data = json.loads(_strip_json(response))
+            return _parse_content_start_response(data, page_count=total)
+        except (json.JSONDecodeError, ValueError) as e:
+            last_error = e
+            if attempt >= max_retries:
+                break
+            prompt = (
+                prompt
+                + "\n\nInvalid response: "
+                + str(e)
+                + "\nReply with ONLY valid JSON matching the schema."
+            )
 
-    ``offset_pdf_minus_printed = pdf_page - 1``.
-    """
-    labels = scan_pdf_page_labels(pdf_path, max_pdf_pages=max_pdf_pages)
-    if not labels:
-        return None
-
-    pdf_page_one: Optional[int] = None
-    roman_pages = 0
-    for pdf_page, parsed in labels:
-        if parsed is None:
-            continue
-        kind, num = parsed
-        if kind == "roman":
-            roman_pages += 1
-        if kind == "arabic" and num == 1:
-            pdf_page_one = pdf_page
-            break
-
-    if pdf_page_one is None:
-        return None
-
-    offset = pdf_page_one - 1
-
-    verify = 0
-    verify_ok = 0
-    for pdf_page, parsed in labels:
-        if pdf_page < pdf_page_one or parsed is None:
-            continue
-        kind, num = parsed
-        if kind != "arabic":
-            continue
-        expected = pdf_page - offset
-        verify += 1
-        if num == expected:
-            verify_ok += 1
-        if verify >= 8:
-            break
-
-    if verify >= 3 and verify_ok == verify:
-        confidence = "high"
-    elif verify_ok >= 2:
-        confidence = "medium"
-    else:
-        confidence = "medium"
-
-    return PageMapping(
-        toc_page_kind="printed",
-        printed_page_one_pdf_page=pdf_page_one,
-        offset_pdf_minus_printed=offset,
-        method="last_word",
-        confidence=confidence,
-        notes=(
-            f"Last-word scan: {roman_pages} PDF page(s) with Roman labels before "
-            f"Arabic 1 on PDF page {pdf_page_one} (offset +{offset})."
-        ),
-    )
+    raise ValueError(
+        f"Content-start LLM failed after {max_retries + 1} attempt(s): {last_error}"
+    ) from last_error
 
 
 def resolve_page_mapping(
     pdf_path: str,
+    call_llm: Callable[[str], str],
     *,
-    page_mapping_hint: Any = None,
+    preview_pages: int = DEFAULT_PREVIEW_PAGES,
 ) -> PageMapping:
-    """Last-word calibration, then LLM hint, then identity."""
-    mapped = calibrate_page_mapping(pdf_path)
-    if mapped is not None:
-        return mapped
-    hinted = mapping_from_hint(page_mapping_hint)
-    if hinted is not None:
-        return hinted
-    return identity_mapping()
+    """Run LLM content-start detection; fall back to identity on failure."""
+    try:
+        return calibrate_page_mapping_with_llm(
+            pdf_path, call_llm, preview_pages=preview_pages
+        )
+    except ValueError:
+        return identity_mapping()
 
 
 def convert_page_spec_printed_to_pdf(

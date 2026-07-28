@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from pipeline.retrieve import get_number_of_pages
-from pipeline.toc import resolve_page_mapping_for_document
+from pipeline.page_mapping import identity_mapping
 
 
 class CreditDocumentStore:
@@ -45,13 +45,8 @@ class CreditDocumentStore:
             table_of_contents=data.get("table_of_contents"),
             page_mapping=data.get("page_mapping"),
         )
-        if store.page_mapping is None and store.table_of_contents:
-            pm = resolve_page_mapping_for_document(
-                store.path,
-                table_of_contents=store.table_of_contents,
-                page_mapping_hint=data.get("page_mapping_hint"),
-            )
-            store.page_mapping = pm.to_dict()
+        if store.page_mapping is None:
+            store.page_mapping = identity_mapping().to_dict()
         return store
 
     def as_doc_info(self) -> dict[str, Any]:

@@ -14,16 +14,10 @@ Return a single JSON object with these fields:
 Each child entry must have:
 - "title": string — section title as shown in the TOC
 - "level": integer >= 1 (1 = article / major division, 2 = section, etc.)
-- "page": integer >= 1 — printed page number from the TOC (required for every entry)
+- "page": integer >= 1 — **printed** page number from the TOC (required for every entry)
 - "children": array of nested entries (same shape), possibly empty
 
-Optional top-level field:
-- "page_mapping_hint": object or null — if the document states where numbering begins, include:
-  - "printed_page_one_pdf_page": integer — PDF page (1-based file index) where printed page "1" starts
-  - "notes": string — brief explanation (e.g. "cover and TOC use roman numerals; body starts PDF p.6")
-
-Note: after extraction, offset is calibrated from each PDF page's **last word**
-(Roman numerals, then Arabic starting at 1). TOC page numbers are Arabic printed pages.
+TOC page numbers are printed/document numbers, not PDF file indices. A separate step maps them to PDF pages.
 
 Return ONLY valid JSON — no markdown fences, no commentary.
 """
@@ -70,7 +64,6 @@ Important:
 - Markdown layout may be wrong; use the visible TOC text and page numbers from the document.
 - If multiple TOC sections exist, combine into one tree in reading order.
 - Use **printed** page numbers shown in the TOC, not PDF file page indices.
-- If the document explains when printed page 1 begins (after cover/TOC), fill page_mapping_hint.
 - If no TOC appears in this excerpt, return an empty "children" array and set document_title from the cover if present.
 
 Output schema:

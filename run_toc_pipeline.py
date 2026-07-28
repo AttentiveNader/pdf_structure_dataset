@@ -64,6 +64,7 @@ def process_pdf(
     llm_fn,
     *,
     max_pages: int,
+    mapping_preview_pages: int = 15,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     page_range = (1, max_pages)
@@ -76,8 +77,8 @@ def process_pdf(
 
     page_mapping = resolve_page_mapping_for_document(
         str(pdf_path.resolve()),
-        table_of_contents=toc_data["table_of_contents"],
-        page_mapping_hint=toc_data.get("page_mapping_hint"),
+        llm_fn,
+        preview_pages=mapping_preview_pages,
     )
     print(
         f"  Page mapping: printed p.1 -> PDF p.{page_mapping.printed_page_one_pdf_page} "
@@ -125,10 +126,18 @@ def main() -> int:
         default=None,
         help="LLM callable as MODULE:CALLABLE (default: call_llm in this file)",
     )
+    parser.add_argument(
+        "--mapping-preview-pages",
+        type=int,
+        default=15,
+        help="PDF pages sent to LLM for printed-page-1 detection (default: 15)",
+    )
     args = parser.parse_args()
 
     if args.max_pages < 1:
         raise SystemExit("--max-pages must be at least 1")
+    if args.mapping_preview_pages < 1:
+        raise SystemExit("--mapping-preview-pages must be at least 1")
 
     llm_fn = args.llm if args.llm is not None else call_llm
     input_path = Path(args.input)
@@ -141,6 +150,7 @@ def main() -> int:
             output_dir,
             llm_fn,
             max_pages=args.max_pages,
+            mapping_preview_pages=args.mapping_preview_pages,
         )
         print(f"  -> {out}")
 
