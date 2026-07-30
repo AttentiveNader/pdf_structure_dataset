@@ -92,8 +92,7 @@ def remove_fields(structure: Any, *, fields: list[str]) -> Any:
 
 
 def get_document_metadata(doc_info: dict[str, Any]) -> str:
-    """JSON metadata: name, title, page_count, toc entry count."""
-    toc = doc_info.get("table_of_contents") or {}
+    """JSON metadata: name, title, page count, page mapping."""
     result = {
         "doc_name": doc_info.get("doc_name", ""),
         "document_title": doc_info.get("document_title", ""),
@@ -101,6 +100,7 @@ def get_document_metadata(doc_info: dict[str, Any]) -> str:
         "status": "completed",
         "page_count": doc_info.get("page_count"),
         "source_pdf": doc_info.get("path", ""),
+        "toc_chars": len(doc_info.get("toc_text") or ""),
     }
     mapping = doc_info.get("page_mapping")
     if mapping:
@@ -115,12 +115,11 @@ def get_document_metadata(doc_info: dict[str, Any]) -> str:
 
 
 def get_document_structure_json(doc_info: dict[str, Any]) -> str:
-    """TOC tree without extra fields — for navigation."""
-    toc = doc_info.get("table_of_contents")
+    """Compact TOC text for navigation (minimal tokens)."""
+    toc = doc_info.get("toc_text")
     if not toc:
-        return json.dumps({"error": "no table_of_contents loaded"})
-    slim = remove_fields(toc, fields=[])
-    return json.dumps(slim, ensure_ascii=False)
+        return json.dumps({"error": "no TOC text loaded"})
+    return toc
 
 
 def get_page_content_json(

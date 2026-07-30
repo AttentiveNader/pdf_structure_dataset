@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Extract table of contents (with page numbers) from the first N pages of credit agreement PDFs.
+Extract table of contents from credit agreement PDFs as compact text.
 
-Docling -> Markdown (page-limited) -> LLM -> JSON TOC tree.
+Docling -> Markdown (page-limited) -> LLM -> .toc.txt (+ small .json metadata).
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from pipeline.extract import extract_pdf_to_markdown
-from pipeline.toc import extract_toc
+from pipeline.toc import extract_toc, resolve_page_mapping_for_document
 
 DEFAULT_PDF_DIR = ROOT / "pdfs"
 DEFAULT_OUTPUT_DIR = ROOT / "output_toc"
@@ -72,8 +72,8 @@ def process_pdf(
     print(f"  Markdown (pages 1–{max_pages}): {len(markdown):,} chars")
 
     toc_data = extract_toc(markdown, llm_fn, max_pages=max_pages)
-
-    from pipeline.toc import resolve_page_mapping_for_document
+    toc_text = toc_data["toc_text"]
+    print(f"  TOC text: {len(toc_text):,} chars")
 
     page_mapping = resolve_page_mapping_for_document(
         str(pdf_path.resolve()),
@@ -85,22 +85,25 @@ def process_pdf(
         f"({page_mapping.method}, {page_mapping.confidence})"
     )
 
-    out_path = output_dir / f"{pdf_path.stem}.json"
+    toc_path = output_dir / f"{pdf_path.stem}.toc.txt"
+    meta_path = output_dir / f"{pdf_path.stem}.json"
+    toc_path.write_text(toc_text + "\n", encoding="utf-8")
+
     payload = {
         "source_pdf": str(pdf_path.resolve()),
         "pages_extracted": {"from": 1, "to": max_pages},
-        "markdown_chars": len(markdown),
         "document_title": toc_data["document_title"],
+        "toc_file": toc_path.name,
+        "toc_chars": len(toc_text),
         "page_mapping": page_mapping.to_dict(),
-        "table_of_contents": toc_data["table_of_contents"],
     }
-    out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
-    return out_path
+    meta_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+    return meta_path
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Extract TOC with page numbers from the first pages of credit agreement PDFs."
+        description="Extract compact-text TOC from credit agreement PDFs."
     )
     parser.add_argument(
         "input",
@@ -112,25 +115,25 @@ def main() -> int:
         "-o",
         "--output",
         default=str(DEFAULT_OUTPUT_DIR),
-        help=f"Output directory for JSON files (default: {DEFAULT_OUTPUT_DIR})",
+        help=f"Output directory (default: {DEFAULT_OUTPUT_DIR})",
     )
     parser.add_argument(
         "--max-pages",
         type=int,
         default=DEFAULT_MAX_PAGES,
-        help=f"Number of pages from the start to analyze (default: {DEFAULT_MAX_PAGES})",
+        help=f"Pages from the start for TOC extraction (default: {DEFAULT_MAX_PAGES})",
     )
     parser.add_argument(
         "--llm",
         type=_load_callable,
         default=None,
-        help="LLM callable as MODULE:CALLABLE (default: call_llm in this file)",
+        help="LLM callable as MODULE:CALLABLE",
     )
     parser.add_argument(
         "--mapping-preview-pages",
         type=int,
         default=15,
-        help="PDF pages sent to LLM for printed-page-1 detection (default: 15)",
+        help="PDF pages for printed-page-1 LLM detection (default: 15)",
     )
     args = parser.parse_args()
 

@@ -2,7 +2,7 @@
 """
 TOC-guided document QA (PageIndex-inspired).
 
-Uses table_of_contents JSON (from run_toc_pipeline.py) to navigate the PDF and
+Uses compact TOC text (from run_toc_pipeline.py) to navigate the PDF and
 answer queries via an LLM agent with retrieval tools:
 
   get_document / get_document_structure / get_page_content

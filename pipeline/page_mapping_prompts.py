@@ -16,7 +16,8 @@ Return ONLY valid JSON — no markdown fences, no commentary.
 def build_content_start_prompt(pages_block: str, *, preview_pages: int) -> str:
     return f"""You are analyzing the first {preview_pages} pages of a credit agreement PDF.
 
-Each section is plain text extracted from one PDF page. At the end of each section,
+Each section shows only the **first and last 100 characters** of that PDF page's text
+(footers/page numbers are usually in the tail snippet). At the end of each section,
 ``[PDF_PAGE_INDEX: N]`` is the **actual PDF page number** (1-based file index).
 
 Your task: find the PDF page index where **printed document page 1** begins — the start of
@@ -24,7 +25,7 @@ the operative agreement text (typically ARTICLE I or similar), not the cover or 
 
 Clues:
 - Front matter often uses Roman numerals or no Arabic "1" yet.
-- The body start usually shows Arabic page "1" in the footer or matches the first TOC entry page.
+- The body start usually shows Arabic page "1" in the **last 100 chars** (footer) or ARTICLE I in the head.
 - Use the ``[PDF_PAGE_INDEX: N]`` markers as your answer source (not guessed page numbers from footers alone).
 
 {CONTENT_START_JSON_SCHEMA}

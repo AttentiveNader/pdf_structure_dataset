@@ -17,6 +17,36 @@ from pipeline.page_mapping_prompts import build_content_start_prompt
 from pipeline.retrieve import get_number_of_pages, get_pdf_page_content
 
 DEFAULT_PREVIEW_PAGES = 15
+DEFAULT_PAGE_EDGE_CHARS = 100
+
+
+def slice_page_edges(text: str, *, edge_chars: int = DEFAULT_PAGE_EDGE_CHARS) -> str:
+    """First and last ``edge_chars`` characters of page text (for compact LLM input)."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+    if len(cleaned) <= edge_chars * 2:
+        return cleaned
+    return f"{cleaned[:edge_chars]}\n...\n{cleaned[-edge_chars:]}"
+
+
+def format_pages_with_pdf_index(
+    pages: list[dict[str, Any]],
+    *,
+    edge_chars: int = DEFAULT_PAGE_EDGE_CHARS,
+) -> str:
+    """Combine head/tail page snippets with PDF index marker at the end of each block."""
+    blocks: list[str] = []
+    for item in pages:
+        idx = item["page"]
+        snippet = slice_page_edges(item.get("content") or "", edge_chars=edge_chars)
+        blocks.append(
+            f"===== PDF page index {idx} =====\n"
+            f"[first/last {edge_chars} chars of page text]\n"
+            f"{snippet}\n\n"
+            f"[PDF_PAGE_INDEX: {idx}]"
+        )
+    return "\n\n".join(blocks)
 
 
 @dataclass
@@ -60,18 +90,6 @@ def identity_mapping() -> PageMapping:
         confidence="low",
         notes="LLM content-start detection failed; assuming TOC pages match PDF indices.",
     )
-
-
-def format_pages_with_pdf_index(pages: list[dict[str, Any]]) -> str:
-    """Combine page text with PDF index marker at the end of each page block."""
-    blocks: list[str] = []
-    for item in pages:
-        idx = item["page"]
-        text = (item.get("content") or "").strip()
-        blocks.append(
-            f"===== PDF page index {idx} =====\n{text}\n\n[PDF_PAGE_INDEX: {idx}]"
-        )
-    return "\n\n".join(blocks)
 
 
 def _strip_json(text: str) -> str:

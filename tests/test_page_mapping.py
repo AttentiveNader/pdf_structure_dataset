@@ -14,6 +14,7 @@ from pipeline.page_mapping import (
     _parse_content_start_response,
     convert_page_spec_printed_to_pdf,
     format_pages_with_pdf_index,
+    slice_page_edges,
 )
 
 
@@ -33,6 +34,15 @@ class PageMappingTests(unittest.TestCase):
         self.assertEqual(m.printed_page_one_pdf_page, 6)
         self.assertEqual(m.offset_pdf_minus_printed, 5)
         self.assertEqual(m.method, "llm_content_start")
+
+    def test_format_pages_snippet(self) -> None:
+        long_text = "H" * 150 + "BODY" + "T" * 150
+        snippet = slice_page_edges(long_text, edge_chars=100)
+        self.assertTrue(snippet.startswith("H" * 100))
+        self.assertTrue(snippet.endswith("T" * 100))
+        block = format_pages_with_pdf_index([{"page": 3, "content": long_text}])
+        self.assertIn("[PDF_PAGE_INDEX: 3]", block)
+        self.assertNotIn("BODY", block)
 
     def test_convert_spec(self) -> None:
         m = PageMapping(

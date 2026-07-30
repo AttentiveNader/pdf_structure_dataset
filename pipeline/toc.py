@@ -1,79 +1,42 @@
-"""Extract table of contents (with page numbers) via LLM."""
+"""Extract table of contents as compact text via LLM."""
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Callable
 from typing import Any, Optional
 
 from pipeline.toc_prompts import build_toc_prompt
 
-_TOC_NODE_KEYS = frozenset({"title", "level", "page", "children"})
+_ENTRY_RE = re.compile(r"^(\s*)(.+?)\s*\|\s*(\d+)\s*$")
 
 
-def _strip_json_from_response(text: str) -> str:
+def _strip_fences(text: str) -> str:
     text = text.strip()
-    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
+    fence = re.search(r"```(?:markdown|text|md)?\s*([\s\S]*?)```", text, re.IGNORECASE)
     if fence:
         return fence.group(1).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        return text[start : end + 1]
     return text
 
 
-def _validate_toc_node(node: Any, path: str, *, is_root: bool) -> None:
-    if not isinstance(node, dict):
-        raise ValueError(f"{path}: expected object")
-    missing = _TOC_NODE_KEYS - set(node.keys())
-    if missing:
-        raise ValueError(f"{path}: missing keys {sorted(missing)}")
-    if not isinstance(node["title"], str):
-        raise ValueError(f"{path}.title: expected string")
-    if not isinstance(node["level"], int):
-        raise ValueError(f"{path}.level: expected integer")
-    if not isinstance(node["children"], list):
-        raise ValueError(f"{path}.children: expected array")
-
-    page = node["page"]
-    if is_root:
-        if page is not None and not isinstance(page, int):
-            raise ValueError(f"{path}.page: root must have null page")
-    else:
-        if not isinstance(page, int) or page < 1:
-            raise ValueError(f"{path}.page: expected integer >= 1")
-
-    for i, child in enumerate(node["children"]):
-        _validate_toc_node(child, f"{path}.children[{i}]", is_root=False)
+def parse_document_title(toc_text: str) -> str:
+    for line in toc_text.splitlines():
+        line = line.strip()
+        if line.startswith("# "):
+            return line[2:].strip()
+    return "Credit Agreement"
 
 
-def _validate_toc_payload(data: Any) -> dict[str, Any]:
-    if not isinstance(data, dict):
-        raise ValueError("expected top-level JSON object")
-    if "document_title" not in data or "table_of_contents" not in data:
-        raise ValueError("missing document_title or table_of_contents")
-    if not isinstance(data["document_title"], str):
-        raise ValueError("document_title must be a string")
-    toc = data["table_of_contents"]
-    _validate_toc_node(toc, "table_of_contents", is_root=True)
-    return data
-
-
-def resolve_page_mapping_for_document(
-    pdf_path: str,
-    call_llm: Callable[[str], str],
-    *,
-    table_of_contents: dict[str, Any] | None = None,
-    preview_pages: int = 15,
-) -> "PageMapping":
-    from pipeline.page_mapping import resolve_page_mapping
-
-    del table_of_contents
-    return resolve_page_mapping(
-        pdf_path, call_llm, preview_pages=preview_pages
-    )
+def validate_toc_text(toc_text: str) -> str:
+    text = toc_text.strip()
+    if not text:
+        raise ValueError("empty TOC text")
+    if not any(line.strip().startswith("# ") for line in text.splitlines()):
+        raise ValueError("first heading line must be '# Document Title'")
+    entries = [ln for ln in text.splitlines() if _ENTRY_RE.match(ln)]
+    if not entries and len(text.splitlines()) > 1:
+        raise ValueError("no TOC lines matching '{title} | {page}'")
+    return text
 
 
 def extract_toc(
@@ -83,17 +46,20 @@ def extract_toc(
     max_pages: int = 20,
     max_retries: int = 2,
 ) -> dict[str, Any]:
-    """Return parsed TOC JSON from front-matter markdown."""
+    """Return ``document_title`` and compact ``toc_text``."""
     prompt = build_toc_prompt(markdown_content, max_pages=max_pages)
     last_error: Optional[Exception] = None
 
     for attempt in range(max_retries + 1):
         response = call_llm(prompt)
-        raw = _strip_json_from_response(response)
+        raw = _strip_fences(response)
         try:
-            data = json.loads(raw)
-            return _validate_toc_payload(data)
-        except (json.JSONDecodeError, ValueError) as e:
+            toc_text = validate_toc_text(raw)
+            return {
+                "document_title": parse_document_title(toc_text),
+                "toc_text": toc_text,
+            }
+        except ValueError as e:
             last_error = e
             if attempt >= max_retries:
                 break
@@ -101,9 +67,20 @@ def extract_toc(
                 prompt
                 + "\n\nYour previous response was invalid: "
                 + str(e)
-                + "\nReply again with ONLY valid JSON matching the schema."
+                + "\nReply with plain text only, matching the format above."
             )
 
     raise ValueError(
-        f"Failed to obtain valid TOC JSON after {max_retries + 1} attempt(s): {last_error}"
+        f"Failed to obtain valid TOC text after {max_retries + 1} attempt(s): {last_error}"
     ) from last_error
+
+
+def resolve_page_mapping_for_document(
+    pdf_path: str,
+    call_llm: Callable[[str], str],
+    *,
+    preview_pages: int = 15,
+) -> "PageMapping":
+    from pipeline.page_mapping import resolve_page_mapping
+
+    return resolve_page_mapping(pdf_path, call_llm, preview_pages=preview_pages)
