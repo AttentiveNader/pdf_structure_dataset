@@ -21,6 +21,7 @@ class CreditDocumentStore:
         toc_text: str = "",
         pages: Optional[list[dict[str, Any]]] = None,
         page_mapping: Optional[dict[str, Any]] = None,
+        toc_page_numbers_are: str = "pdf",
     ):
         self.path = str(Path(pdf_path).resolve())
         self.doc_name = Path(pdf_path).name
@@ -28,6 +29,7 @@ class CreditDocumentStore:
         self.toc_text = toc_text
         self.pages = pages
         self.page_mapping = page_mapping
+        self.toc_page_numbers_are = toc_page_numbers_are
         self.page_count = get_number_of_pages(self.path)
 
     @classmethod
@@ -47,6 +49,7 @@ class CreditDocumentStore:
             document_title=data.get("document_title", ""),
             toc_text=toc_text,
             page_mapping=data.get("page_mapping"),
+            toc_page_numbers_are=str(data.get("toc_page_numbers_are", "pdf")),
         )
         if store.page_mapping is None:
             store.page_mapping = identity_mapping().to_dict()
@@ -61,6 +64,7 @@ class CreditDocumentStore:
             "toc_text": self.toc_text,
             "pages": self.pages,
             "page_mapping": self.page_mapping,
+            "toc_page_numbers_are": self.toc_page_numbers_are,
         }
 
     def preload_pages(self) -> None:

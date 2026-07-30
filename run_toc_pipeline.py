@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from pipeline.extract import extract_pdf_to_markdown
-from pipeline.toc import extract_toc, resolve_page_mapping_for_document
+from pipeline.toc import apply_page_mapping_to_toc_text, extract_toc, resolve_page_mapping_for_document
 
 DEFAULT_PDF_DIR = ROOT / "pdfs"
 DEFAULT_OUTPUT_DIR = ROOT / "output_toc"
@@ -85,6 +85,9 @@ def process_pdf(
         f"({page_mapping.method}, {page_mapping.confidence})"
     )
 
+    toc_text = apply_page_mapping_to_toc_text(toc_text, page_mapping)
+    print(f"  TOC text (PDF page indices): {len(toc_text):,} chars")
+
     toc_path = output_dir / f"{pdf_path.stem}.toc.txt"
     meta_path = output_dir / f"{pdf_path.stem}.json"
     toc_path.write_text(toc_text + "\n", encoding="utf-8")
@@ -95,6 +98,7 @@ def process_pdf(
         "document_title": toc_data["document_title"],
         "toc_file": toc_path.name,
         "toc_chars": len(toc_text),
+        "toc_page_numbers_are": "pdf",
         "page_mapping": page_mapping.to_dict(),
     }
     meta_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")

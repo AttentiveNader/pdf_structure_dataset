@@ -103,14 +103,20 @@ def get_document_metadata(doc_info: dict[str, Any]) -> str:
         "toc_chars": len(doc_info.get("toc_text") or ""),
     }
     mapping = doc_info.get("page_mapping")
+    toc_kind = str(doc_info.get("toc_page_numbers_are", "printed"))
     if mapping:
         result["page_mapping"] = mapping
-        result["toc_page_numbers_are"] = "printed"
-        result["page_content_pages_are"] = "printed"
-        result["conversion"] = (
-            "Pass printed TOC page numbers to get_page_content; "
-            "they are converted to PDF page indices automatically."
-        )
+        result["toc_page_numbers_are"] = toc_kind
+        result["page_content_pages_are"] = toc_kind
+        if toc_kind == "pdf":
+            result["conversion"] = (
+                "TOC page numbers are PDF file indices; pass them directly to get_page_content."
+            )
+        else:
+            result["conversion"] = (
+                "Pass printed TOC page numbers to get_page_content; "
+                "they are converted to PDF page indices automatically."
+            )
     return json.dumps(result, ensure_ascii=False)
 
 
@@ -133,7 +139,8 @@ def get_page_content_json(
 
     page_spec = pages
     mapping = doc_info.get("page_mapping")
-    if mapping and isinstance(mapping, dict):
+    toc_kind = str(doc_info.get("toc_page_numbers_are", "printed"))
+    if mapping and isinstance(mapping, dict) and toc_kind != "pdf":
         from pipeline.page_mapping import PageMapping, convert_page_spec_printed_to_pdf
 
         pm = PageMapping.from_dict(mapping)
@@ -157,7 +164,7 @@ def get_page_content_json(
     except Exception as e:
         return json.dumps({"error": f"Failed to read page content: {e}"})
 
-    if mapping and isinstance(mapping, dict):
+    if mapping and isinstance(mapping, dict) and toc_kind != "pdf":
         offset = mapping.get("offset_pdf_minus_printed", 0)
         for item in content:
             item["pdf_page"] = item["page"]

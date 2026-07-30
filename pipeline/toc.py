@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from pipeline.toc_prompts import build_toc_prompt
+
+if TYPE_CHECKING:
+    from pipeline.page_mapping import PageMapping
 
 _ENTRY_RE = re.compile(r"^(\s*)(.+?)\s*\|\s*(\d+)\s*$")
 
@@ -37,6 +40,20 @@ def validate_toc_text(toc_text: str) -> str:
     if not entries and len(text.splitlines()) > 1:
         raise ValueError("no TOC lines matching '{title} | {page}'")
     return text
+
+
+def apply_page_mapping_to_toc_text(toc_text: str, mapping: "PageMapping") -> str:
+    """Rewrite ``| {printed_page}`` suffixes to PDF file page indices."""
+    out_lines: list[str] = []
+    for line in toc_text.splitlines():
+        match = _ENTRY_RE.match(line)
+        if match:
+            indent, title, page_s = match.group(1), match.group(2), match.group(3)
+            pdf_page = mapping.printed_to_pdf(int(page_s))
+            out_lines.append(f"{indent}{title} | {pdf_page}")
+        else:
+            out_lines.append(line)
+    return "\n".join(out_lines)
 
 
 def extract_toc(
