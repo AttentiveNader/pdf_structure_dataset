@@ -103,7 +103,7 @@ def get_document_metadata(doc_info: dict[str, Any]) -> str:
         "toc_chars": len(doc_info.get("toc_text") or ""),
     }
     mapping = doc_info.get("page_mapping")
-    toc_kind = str(doc_info.get("toc_page_numbers_are", "printed"))
+    toc_kind = str(doc_info.get("toc_page_numbers_are", "pdf"))
     if mapping:
         result["page_mapping"] = mapping
         result["toc_page_numbers_are"] = toc_kind
@@ -139,7 +139,7 @@ def get_page_content_json(
 
     page_spec = pages
     mapping = doc_info.get("page_mapping")
-    toc_kind = str(doc_info.get("toc_page_numbers_are", "printed"))
+    toc_kind = str(doc_info.get("toc_page_numbers_are", "pdf"))
     if mapping and isinstance(mapping, dict) and toc_kind != "pdf":
         from pipeline.page_mapping import PageMapping, convert_page_spec_printed_to_pdf
 

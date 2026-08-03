@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Optional
 
 from pipeline.page_mapping import identity_mapping
 from pipeline.retrieve import get_number_of_pages
+from pipeline.toc import parse_document_title
 
 
 class CreditDocumentStore:
@@ -28,32 +28,28 @@ class CreditDocumentStore:
         self.document_title = document_title
         self.toc_text = toc_text
         self.pages = pages
-        self.page_mapping = page_mapping
+        self.page_mapping = page_mapping or identity_mapping().to_dict()
         self.toc_page_numbers_are = toc_page_numbers_are
         self.page_count = get_number_of_pages(self.path)
 
     @classmethod
-    def from_toc_json(cls, pdf_path: str | Path, toc_json_path: str | Path) -> "CreditDocumentStore":
-        meta_path = Path(toc_json_path)
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    def from_toc_file(cls, pdf_path: str | Path, toc_path: str | Path) -> "CreditDocumentStore":
+        """Load compact TOC text from ``*.toc.txt`` (PDF page indices)."""
+        toc_file = Path(toc_path)
+        if not toc_file.is_file():
+            raise FileNotFoundError(f"TOC file not found: {toc_file}")
 
-        toc_text = data.get("toc_text", "")
-        toc_file = data.get("toc_file")
-        if not toc_text and toc_file:
-            toc_path = meta_path.parent / toc_file
-            if toc_path.is_file():
-                toc_text = toc_path.read_text(encoding="utf-8").strip()
+        toc_text = toc_file.read_text(encoding="utf-8").strip()
+        if not toc_text:
+            raise ValueError(f"TOC file is empty: {toc_file}")
 
-        store = cls(
+        return cls(
             pdf_path=pdf_path,
-            document_title=data.get("document_title", ""),
+            document_title=parse_document_title(toc_text),
             toc_text=toc_text,
-            page_mapping=data.get("page_mapping"),
-            toc_page_numbers_are=str(data.get("toc_page_numbers_are", "pdf")),
+            page_mapping=identity_mapping().to_dict(),
+            toc_page_numbers_are="pdf",
         )
-        if store.page_mapping is None:
-            store.page_mapping = identity_mapping().to_dict()
-        return store
 
     def as_doc_info(self) -> dict[str, Any]:
         return {
